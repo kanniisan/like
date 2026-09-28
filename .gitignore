@@ -1,0 +1,30 @@
+# 비밀값
+.env
+.env.*
+!.env.example
+
+# 파이썬
+__pycache__/
+*.pyc
+.venv/
+
+# 로그/임시
+batch.log
+*.log
+
+# 미디어 원본 및 생성물 (용량 큼, 개인 자료)
+면접연습1/
+output/
+episodes/
+*.wav
+*.mp3
+*.m4a
+*.flac
+*.mp4
+*.mkv
+*.mov
+*.webm
+*.srt
+*.png
+*.jpg
+*.jpeg
