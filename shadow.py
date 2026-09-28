@@ -9,6 +9,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 import langtube as lt
+from correct import correct_entry as correct, retranslate_factory
 
 AUDIO = {".wav", ".mp3", ".m4a", ".flac"}  # 결과/원본 mp4가 섞여도 입력으로 잡지 않는다
 W, H = 1920, 1080
@@ -193,6 +194,7 @@ def main():
             tr = " ".join(lt.translate([(0, 0, src)], a.target, a.model))
             if tr and not re.search(r"[一-鿿぀-ヿ-�□]", tr):
                 break
+        src, tr, _ = correct(f.name, src, tr, folder, a.model, True, retranslate_factory(a.target, a.model))
         cache[f.name] = {"src": src, "tr": tr}
         cache_p.write_text(json.dumps(cache, ensure_ascii=False, indent=1), encoding="utf-8")
 
