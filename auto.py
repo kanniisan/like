@@ -43,20 +43,35 @@ def write_meta(folder, ep, files, a, cache, gap_sec):
     (folder / "episodes" / f"ep{ep:02}.md").write_text("\n".join(lines), encoding="utf-8")
 
 
+def split_episodes(files, a):
+    """[(시작 인덱스, 파일목록)]. --final이면 batch/2 미만의 자투리를 앞 편에 합친다."""
+    chunks = [(n, files[n:n + a.batch]) for n in range(0, len(files), a.batch)]
+    if a.final and len(chunks) > 1 and len(chunks[-1][1]) < a.batch / 2:
+        n, tail = chunks.pop()
+        chunks[-1] = (chunks[-1][0], chunks[-1][1] + tail)
+    return chunks
+
+
 def run_once(folder, a):
     files = audio_files(folder)
     (folder / "episodes").mkdir(exist_ok=True)
     cache_p = folder / "output" / "shadow_cache.json"
     made = 0
-    for n in range(0, len(files), a.batch):
-        ep = n // a.batch + 1
-        chunk = files[n:n + a.batch]
+    for ep, (n, chunk) in enumerate(split_episodes(files, a), 1):
         out = folder / "episodes" / f"ep{ep:02}.mp4"
-        if len(chunk) < a.batch and not a.partial:
-            print(f"ep{ep:02}: {len(chunk)}개뿐이라 대기 (--partial 로 강제 생성)")
+        if len(chunk) < a.batch and not a.final:
+            print(f"ep{ep:02}: {len(chunk)}개뿐이라 대기 (--final 로 앞 편에 합쳐 마무리)")
             continue
         meta = folder / "episodes" / f"ep{ep:02}.md"
         png = folder / "episodes" / f"ep{ep:02}.png"
+        manifest = folder / "episodes" / f"ep{ep:02}.json"
+        want = {"files": [f.name for f in chunk], "gap": a.gap, "repeat": a.repeat}
+        if out.exists() and not manifest.exists() and len(chunk) == a.batch:
+            manifest.write_text(json.dumps(want, ensure_ascii=False), encoding="utf-8")  # 구버전 결과 인수
+        have = json.loads(manifest.read_text(encoding="utf-8")) if manifest.exists() else None
+        if have != want:  # 구성/옵션이 달라졌으면 그 편만 다시 만든다
+            for f in (folder / "episodes").glob(f"ep{ep:02}.*"):
+                f.unlink()
         if out.exists() and meta.exists() and png.exists():
             continue
         if not out.exists():
@@ -64,6 +79,7 @@ def run_once(folder, a):
             subprocess.run([sys.executable, str(HERE / "shadow.py"), str(folder), "--start", str(n),
                             "--limit", str(len(chunk)), "--gap", str(a.gap), "--repeat", str(a.repeat),
                             "--lang", a.lang, "--out", f"episodes/ep{ep:02}.mp4"], check=True)
+        manifest.write_text(json.dumps(want, ensure_ascii=False), encoding="utf-8")
         cache = json.loads(cache_p.read_text(encoding="utf-8")) if cache_p.exists() else {}
         write_meta(folder, ep, chunk, a, cache, 0)
         first = cache.get(chunk[0].name, {})
@@ -80,7 +96,7 @@ def main():
     ap.add_argument("--lang", default="ja")
     ap.add_argument("--gap", type=float, default=1.3)
     ap.add_argument("--repeat", type=int, default=1)
-    ap.add_argument("--partial", action="store_true", help="마지막 남은 묶음도 생성")
+    ap.add_argument("--final", action="store_true", help="마무리: 자투리(batch/2 미만)는 앞 편에 합치고, 나머지 묶음도 생성")
     ap.add_argument("--watch", action="store_true", help="폴더 감시 모드")
     a = ap.parse_args()
     folder = Path(a.folder).resolve()
