@@ -11,6 +11,7 @@ from pathlib import Path
 
 from langtube import find_ffmpeg
 from shadow import probe_duration
+from thumb import make_thumb
 
 HERE = Path(__file__).parent
 AUDIO = {".wav", ".mp3", ".m4a", ".flac"}
@@ -55,7 +56,8 @@ def run_once(folder, a):
             print(f"ep{ep:02}: {len(chunk)}개뿐이라 대기 (--partial 로 강제 생성)")
             continue
         meta = folder / "episodes" / f"ep{ep:02}.md"
-        if out.exists() and meta.exists():
+        png = folder / "episodes" / f"ep{ep:02}.png"
+        if out.exists() and meta.exists() and png.exists():
             continue
         if not out.exists():
             print(f"ep{ep:02}: {len(chunk)}개 처리")
@@ -64,6 +66,8 @@ def run_once(folder, a):
                             "--lang", a.lang, "--out", f"episodes/ep{ep:02}.mp4"], check=True)
         cache = json.loads(cache_p.read_text(encoding="utf-8")) if cache_p.exists() else {}
         write_meta(folder, ep, chunk, a, cache, 0)
+        first = cache.get(chunk[0].name, {})
+        make_thumb(png, a.title, ep, first.get("src", ""), first.get("tr", ""))
         made += 1
     return made
 
