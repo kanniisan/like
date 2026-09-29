@@ -60,6 +60,9 @@ def transcribe(path, lang):
     sys.exit("음성 인식 실패")
 
 
+BAD_TR = re.compile(r"[一-鿿぀-ヿ-�□]")
+
+
 def translate(segs, target, model, batch=15):
     out = []
     for i in range(0, len(segs), batch):
@@ -72,7 +75,25 @@ def translate(segs, target, model, batch=15):
         except Exception:
             res = {}
         out += [str(res.get(str(n), "")) for n in range(len(chunk))]
+    # 한자/가나가 섞였거나 원문과 같은 항목만 한 줄씩 재번역
+    for i, ((_, _, src), tr) in enumerate(zip(segs, out)):
+        if src.strip() and (not tr or tr == src or BAD_TR.search(tr)):
+            for _ in range(3):
+                fix = " ".join(_translate_once(src, target, model))
+                if fix and fix != src and not BAD_TR.search(fix):
+                    out[i] = fix
+                    break
     return out
+
+
+def _translate_once(src, target, model):
+    prompt = (f"다음 문장을 자연스러운 {target} 한 문장으로 번역해라. 한글과 문장부호만 사용하고 "
+              f"한자·일본어·중국어 글자는 절대 섞지 마라. 짧은 구어체/감탄사도 반드시 번역하고 원문을 그대로 남기지 마라. "
+              f"예: だめだよ -> 안돼. 번역문만 출력해라.\n\n{src}")
+    try:
+        return [llm(model, prompt).splitlines()[0].strip()]
+    except Exception:
+        return [""]
 
 
 def write_srt(path, segs, trans):
