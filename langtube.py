@@ -82,13 +82,16 @@ def write_srt(path, segs, trans):
 
 
 def vocab(text, target, model):
-    prompt = (f"다음 문장에서 학습자에게 유용한 핵심 단어/표현 15개를 골라라. "
-              f"JSON 배열로만 출력: [{{\"word\":원문,\"reading\":읽기,\"meaning\":{target} 뜻,\"example\":원문 예문}}]\n\n{text}")
+    prompt = (f"다음 문장에서 학습자에게 유용한 핵심 단어/표현을 15개 골라라(문장에 실제로 나오는 것만). "
+              f"각 항목: word=원문 표기, reading=히라가나 읽기, meaning={target}로 된 뜻(원문을 그대로 베끼지 마라), "
+              f"example=그 단어가 나온 원문 문장.\n"
+              f"반드시 이 형식의 JSON 객체 하나로만 출력: "
+              f"{{\"words\": [{{\"word\": \"\", \"reading\": \"\", \"meaning\": \"\", \"example\": \"\"}}, ...]}}\n\n{text}")
     try:
         data = json.loads(llm(model, prompt, as_json=True))
         if isinstance(data, dict):
-            data = next((v for v in data.values() if isinstance(v, list)), [data])
-        return [w for w in data if isinstance(w, dict)]
+            data = data.get("words") or next((v for v in data.values() if isinstance(v, list)), [data])
+        return [w for w in data if isinstance(w, dict) and w.get("word")]
     except Exception:
         return []
 

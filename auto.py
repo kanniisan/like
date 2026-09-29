@@ -4,7 +4,7 @@
   python auto.py 면접연습1 --watch         # 폴더를 감시하다가 새 음성이 채워지면 자동 실행
   python auto.py 면접연습1 --batch 8 --title "일본어 면접 쉐도잉" --repeat 2
 
-결과: <폴더>/episodes/ep01.mp4, ep01.md (제목 후보 없이 목차/설명/챕터), ...
+결과: <폴더>/episodes/ep01.mp4, ep01.md (제목 후보/설명/챕터/스크립트), ep01.png (썸네일), ep01_vocab.csv (단어장), ...
 """
 import argparse, json, subprocess, sys, time
 from pathlib import Path
@@ -12,6 +12,7 @@ from pathlib import Path
 from langtube import find_ffmpeg
 from shadow import probe_duration
 from thumb import make_thumb
+from extras import make_titles, write_vocab
 
 HERE = Path(__file__).parent
 AUDIO = {".wav", ".mp3", ".m4a", ".flac"}
@@ -27,7 +28,9 @@ def fmt(sec):
 
 def write_meta(folder, ep, files, a, cache, gap_sec):
     """편별 설명란/챕터. 챕터 시간은 실제 영상 구성(듣기+따라말하기)으로 계산한다."""
-    lines = [f"# {a.title} {ep:02}", "", "## 설명",
+    trs = [cache.get(f.name, {}).get("tr", "") for f in files]
+    titles = make_titles(a.title, ep, [t for t in trs if t], a.model)
+    lines = [f"# {a.title} {ep:02}", "", "## 제목 후보"] + [f"- {t}" for t in titles] + ["", "## 설명",
              f"{a.title} {ep:02}편입니다. 원음을 듣고, 이어지는 빈 구간에 따라 말해 보세요. "
              "일본어 원문(후리가나)과 한국어 번역이 함께 나옵니다.", "", "## 챕터"]
     t = 0.0
@@ -72,7 +75,8 @@ def run_once(folder, a):
         if have != want:  # 구성/옵션이 달라졌으면 그 편만 다시 만든다
             for f in (folder / "episodes").glob(f"ep{ep:02}.*"):
                 f.unlink()
-        if out.exists() and meta.exists() and png.exists():
+        vocab = folder / "episodes" / f"ep{ep:02}_vocab.csv"
+        if out.exists() and meta.exists() and png.exists() and vocab.exists():
             continue
         if not out.exists():
             print(f"ep{ep:02}: {len(chunk)}개 처리")
@@ -82,6 +86,7 @@ def run_once(folder, a):
         manifest.write_text(json.dumps(want, ensure_ascii=False), encoding="utf-8")
         cache = json.loads(cache_p.read_text(encoding="utf-8")) if cache_p.exists() else {}
         write_meta(folder, ep, chunk, a, cache, 0)
+        write_vocab(vocab, [cache.get(f.name, {}).get("src", "") for f in chunk], a.target, a.model)
         first = cache.get(chunk[0].name, {})
         make_thumb(png, a.title, ep, first.get("src", ""), first.get("tr", ""))
         made += 1
@@ -94,6 +99,8 @@ def main():
     ap.add_argument("--batch", type=int, default=10, help="한 편에 넣을 문장 수")
     ap.add_argument("--title", default="일본어 쉐도잉")
     ap.add_argument("--lang", default="ja")
+    ap.add_argument("--target", default="한국어")
+    ap.add_argument("--model", default="qwen3:8b")
     ap.add_argument("--gap", type=float, default=1.3)
     ap.add_argument("--repeat", type=int, default=1)
     ap.add_argument("--final", action="store_true", help="마무리: 자투리(batch/2 미만)는 앞 편에 합치고, 나머지 묶음도 생성")
